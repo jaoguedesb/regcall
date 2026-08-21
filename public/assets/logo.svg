@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200" role="img" aria-label="RegCall">
+  <defs>
+    <linearGradient id="rcGold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fff3b0"/>
+      <stop offset="22%" stop-color="#f7d046"/>
+      <stop offset="52%" stop-color="#e0a80d"/>
+      <stop offset="78%" stop-color="#f5cc3f"/>
+      <stop offset="100%" stop-color="#b8860b"/>
+    </linearGradient>
+    <linearGradient id="rcGoldDark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#e8bd2a"/>
+      <stop offset="60%" stop-color="#c08f06"/>
+      <stop offset="100%" stop-color="#8a6508"/>
+    </linearGradient>
+    <radialGradient id="rcDisc" cx="38%" cy="30%" r="80%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="70%" stop-color="#eceff3"/>
+      <stop offset="100%" stop-color="#cfd5de"/>
+    </radialGradient>
+  </defs>
+
+  <circle cx="100" cy="100" r="98" fill="#1e1f22"/>
+  <circle cx="100" cy="100" r="84" fill="url(#rcDisc)"/>
+
+  <g>
+    <!-- arco do fone -->
+    <path d="M64 92 A46 46 0 0 1 138 62"
+          fill="none" stroke="url(#rcGoldDark)" stroke-width="13" stroke-linecap="round"/>
+    <!-- rosto de perfil, virado para a esquerda -->
+    <path d="M132 46
+             c-20 -4 -38 8 -45 27
+             c-3 8 -5 15 -10 21
+             l-30 22
+             c-2 2 -2 4 1 5
+             l24 7
+             c-4 6 -3 12 3 15
+             l-12 8
+             c1 8 7 14 15 18
+             c14 7 32 7 45 1
+             c17 -8 26 -25 27 -45
+             c1 -22 -1 -44 -8 -60
+             c-2 -5 -5 -17 -10 -19 z"
+          fill="url(#rcGold)" stroke="#8a6508" stroke-width="2.5" stroke-linejoin="round"/>
+    <!-- olho -->
+    <ellipse cx="86" cy="82" rx="7.5" ry="6" fill="#ffffff" stroke="#8a6508" stroke-width="2"/>
+    <circle cx="84" cy="83" r="3" fill="#3b2c05"/>
+    <!-- sobrancelha -->
+    <path d="M77 70 q10 -6 19 -2" fill="none" stroke="#8a6508" stroke-width="3.5" stroke-linecap="round"/>
+    <!-- concha do fone -->
+    <ellipse cx="139" cy="96" rx="18" ry="24" fill="url(#rcGoldDark)" stroke="#7a5806" stroke-width="2.5"/>
+    <ellipse cx="139" cy="96" rx="10" ry="15" fill="#2b2d31" opacity=".55"/>
+    <!-- haste do microfone -->
+    <path d="M126 140 q-14 10 -26 10" fill="none" stroke="url(#rcGoldDark)" stroke-width="7" stroke-linecap="round"/>
+    <circle cx="98" cy="150" r="7" fill="url(#rcGold)" stroke="#8a6508" stroke-width="2"/>
+  </g>
+</svg>

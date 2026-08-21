@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: regcall
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: APP_NAME
+        value: RegCall
+      # Preencha no painel do Render (Environment) para funcionar fora da mesma rede:
+      - key: TURN_URLS
+        sync: false
+      - key: TURN_USERNAME
+        sync: false
+      - key: TURN_CREDENTIAL
+        sync: false
+      - key: SERVER_PASSWORD
+        sync: false
