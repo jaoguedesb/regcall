@@ -768,15 +768,19 @@ setInterval(() => {
 
 await loadStoredRooms();
 
-httpServer.listen(PORT, () => {
-  const ice = buildIceServers();
-  const hasTurn = ice.some((s) => JSON.stringify(s.urls).includes('turn'));
-  console.log(`\n  ${APP_NAME} rodando em http://localhost:${PORT}`);
-  console.log(`  TURN configurado: ${hasTurn ? 'sim' : 'NAO (so funciona na mesma rede/redes simples)'}`);
-  console.log(`  Supabase configurado: ${supabaseEnabled ? 'sim' : 'NAO'}`);
-  if (SERVER_PASSWORD) console.log('  Senha do servidor: ativada');
-  console.log('');
-});
+// Na Vercel, a plataforma gerencia o ciclo de vida e a porta da Function.
+// Em desenvolvimento e hosts tradicionais, mantemos o servidor Node normal.
+if (!process.env.VERCEL) {
+  httpServer.listen(PORT, () => {
+    const ice = buildIceServers();
+    const hasTurn = ice.some((s) => JSON.stringify(s.urls).includes('turn'));
+    console.log(`\n  ${APP_NAME} rodando em http://localhost:${PORT}`);
+    console.log(`  TURN configurado: ${hasTurn ? 'sim' : 'NAO (so funciona na mesma rede/redes simples)'}`);
+    console.log(`  Supabase configurado: ${supabaseEnabled ? 'sim' : 'NAO'}`);
+    if (SERVER_PASSWORD) console.log('  Senha do servidor: ativada');
+    console.log('');
+  });
+}
 
 async function shutdown() {
   clearTimeout(persistTimer);
@@ -790,9 +794,13 @@ async function shutdown() {
   setTimeout(() => process.exit(1), 5000).unref();
 }
 
-process.once('SIGTERM', shutdown);
-process.once('SIGINT', shutdown);
+if (!process.env.VERCEL) {
+  process.once('SIGTERM', shutdown);
+  process.once('SIGINT', shutdown);
+}
 
 process.on('unhandledRejection', (err) => {
   console.error('[RegCall] operacao assincrona falhou:', err);
 });
+
+export default httpServer;

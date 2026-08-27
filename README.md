@@ -116,10 +116,10 @@ ser enviada ao navegador. Presença e transmissões continuam efêmeras, pois s�
 ### Login com Google
 
 1. No Google Auth Platform, crie um cliente OAuth do tipo **Web application**.
-2. Em **Authorized JavaScript origins**, adicione a URL pública do RegCall e `http://localhost:3000`.
+2. Em **Authorized JavaScript origins**, adicione `https://regcall.vercel.app` e `http://localhost:3000`.
 3. Em **Authorized redirect URIs**, adicione `https://fahuftnwbhzpxdsvcqnw.supabase.co/auth/v1/callback`.
 4. No Supabase, abra **Authentication → Providers → Google**, habilite o provedor e informe o Client ID e Client Secret do Google.
-5. Em **Authentication → URL Configuration**, configure a URL do site e permita `http://localhost:3000/**` durante o desenvolvimento.
+5. Em **Authentication → URL Configuration**, use `https://regcall.vercel.app` como Site URL e adicione `https://regcall.vercel.app/**` aos redirects. Mantenha `http://localhost:3000/**` durante o desenvolvimento.
 6. Configure `SUPABASE_PUBLISHABLE_KEY` no backend. A chave secreta nunca é enviada ao navegador.
 
 ---
