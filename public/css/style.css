@@ -1,5 +1,5 @@
 /* =========================================================
-   RegCall — tema escuro estilo Discord
+   RegCall â€” tema escuro estilo Discord
    ========================================================= */
 
 :root {
@@ -61,7 +61,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 ::-webkit-scrollbar-thumb { background: #1a1b1e; border-radius: 8px; }
 ::-webkit-scrollbar-thumb:hover { background: #131416; }
 
-/* ============================ BOTÕES ============================ */
+/* ============================ BOTÃ•ES ============================ */
 
 .btn {
   border-radius: 3px;
@@ -296,7 +296,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .voice-status.bad .ico-signal, .voice-status.bad strong { color: var(--red); }
 .voice-actions { display: flex; gap: 6px; }
 
-/* --------- painel do usuário --------- */
+/* --------- painel do usuÃ¡rio --------- */
 .me-panel {
   background: #232428; flex: none;
   display: flex; align-items: center; gap: 2px;
@@ -655,7 +655,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 }
 
 /* =========================================================
-   OBSIDIAN BROADCAST — identidade visual cobre + carvão
+   OBSIDIAN BROADCAST â€” identidade visual cobre + carvÃ£o
    ========================================================= */
 
 :root {
@@ -706,21 +706,37 @@ body {
     #080706;
 }
 .login-card {
-  width: min(490px, 100%);
-  padding: 38px;
+  width: min(460px, 100%);
+  padding: 48px 38px 34px;
   border: 1px solid var(--border);
   border-radius: 28px;
   background: linear-gradient(160deg, rgba(31,24,20,.96), rgba(13,11,9,.96));
   box-shadow: 0 30px 100px rgba(0,0,0,.75), inset 0 1px rgba(255,255,255,.04);
 }
-.brand-logo {
-  width: 88px; height: 88px; border-radius: 24px;
-  object-fit: contain; background: #080706;
-  border: 1px solid rgba(237,155,102,.24);
-  box-shadow: 0 14px 40px rgba(215,126,73,.18);
+.login-brand {
+  display: block;
+  margin-bottom: 34px;
+  text-align: center;
 }
-.login-brand h1 { font-size: 32px; letter-spacing: -.9px; }
-.login-brand p { color: #b9a395; line-height: 1.5; }
+.login-brand h1 {
+  margin: 0;
+  font-family: 'Space Grotesk', var(--font);
+  font-size: clamp(42px, 9vw, 58px);
+  line-height: .95;
+  font-weight: 700;
+  letter-spacing: -3.5px;
+  color: #fff7f0;
+  text-shadow: 0 10px 38px rgba(215,126,73,.24);
+}
+.login-brand h1::after {
+  content: '';
+  display: block;
+  width: 44px; height: 3px;
+  margin: 20px auto 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #f1ae7c, #b9572e);
+  box-shadow: 0 0 24px rgba(226,126,71,.45);
+}
 
 .field input, .field select, .composer input {
   background: rgba(8,7,6,.74);
@@ -743,7 +759,10 @@ body {
 .btn-google {
   display: flex; align-items: center; justify-content: center; gap: 12px;
   color: #211710; background: #fff; border: 1px solid #ddd2c9;
-  box-shadow: 0 8px 28px rgba(0,0,0,.24);
+  min-height: 52px;
+  border-radius: 14px;
+  font-weight: 700;
+  box-shadow: 0 12px 34px rgba(0,0,0,.3);
 }
 .btn-google:hover { background: #fff8f2; transform: translateY(-1px); }
 .btn-google svg { width: 22px; height: 22px; }
@@ -894,10 +913,10 @@ body {
 .toast { border: 1px solid var(--border); border-left: 3px solid var(--brand); background: #17110e; border-radius: 12px; }
 
 @media (max-width: 780px) {
-  .login-card { padding: 26px; border-radius: 22px; }
-  .brand-logo { width: 70px; height: 70px; }
+  .login-card { padding: 38px 24px 26px; border-radius: 22px; }
   .home-hero { padding: 28px 20px; border-radius: 20px; }
   .hero-logo { width: 112px; height: 112px; }
   .topbar { height: 56px; }
   .tile { border-radius: 14px; }
 }
+
