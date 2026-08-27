@@ -100,6 +100,17 @@ Prefere hospedar o seu? [coturn](https://github.com/coturn/coturn) faz o trabalh
 | `TURN_CREDENTIAL` | — | Senha do TURN |
 | `STUN_URLS` | — | STUN extra (já vem com Google + Cloudflare) |
 | `SERVER_PASSWORD` | — | Se preenchida, exige senha para entrar na plataforma |
+| `SUPABASE_URL` | — | URL do projeto Supabase |
+| `SUPABASE_SECRET_KEY` | — | Chave `sb_secret_...` usada somente pelo backend |
+| `SUPABASE_STATE_ID` | `regcall-main` | Identificador desta instalação no banco |
+| `ROOM_TTL_HOURS` | `0` | Horas para remover salas vazias; `0` mantém indefinidamente |
+
+### Persistência das salas
+
+O servidor salva automaticamente salas, canais e até 300 mensagens por canal no Supabase.
+Execute primeiro [`supabase/schema.sql`](supabase/schema.sql) no SQL Editor e configure
+`SUPABASE_URL` e `SUPABASE_SECRET_KEY` no ambiente do backend. A chave secreta nunca deve
+ser enviada ao navegador. Presença e transmissões continuam efêmeras, pois só existem durante a conexão.
 
 ---
 
@@ -120,13 +131,10 @@ que o app fez antes de desistir.
 
 ---
 
-## Trocar a logo pela sua imagem
+## Logo
 
-Salve o PNG como **`public/assets/logo.png`** — só isso. A tela de login, o cabeçalho e
-a barra lateral já procuram esse arquivo primeiro e caem no SVG desenhado só se ele não existir.
-
-Para o ícone da aba, substitua também `public/assets/favicon.svg` (ou coloque um `favicon.png`
-e ajuste a linha `<link rel="icon">` no `public/index.html`).
+A identidade visual usa **`public/assets/spider-logo.png`** na tela de login, página inicial,
+barra lateral, favicon e ícone para dispositivos Apple.
 
 ---
 
@@ -140,6 +148,7 @@ node test/e2e.mjs             # 30 verificações: login, sala, chat, voz, tela,
 node test/mesh3.mjs           # 7 verificações: malha de 3 pessoas + renegociação simultânea
 node test/share.mjs           # 11 verificações: getDisplayMedia real, entrada tardia, restart
 node test/shots.mjs           # gera capturas de tela em shots/
+npm run test:persistence      # confirma que salas sobrevivem ao reinício
 ```
 
 Eles conferem, entre outras coisas, se os bytes de áudio e vídeo realmente trafegam entre os

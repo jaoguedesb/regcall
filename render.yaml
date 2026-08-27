@@ -20,3 +20,9 @@ services:
         sync: false
       - key: SERVER_PASSWORD
         sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      - key: SUPABASE_STATE_ID
+        value: regcall-main

@@ -19,6 +19,19 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
 const APP_NAME = process.env.APP_NAME || 'RegCall';
 const SERVER_PASSWORD = (process.env.SERVER_PASSWORD || '').trim();
+const SUPABASE_URL = (process.env.SUPABASE_URL || '').replace(/\/$/, '');
+const SUPABASE_KEY = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const SUPABASE_STATE_ID = process.env.SUPABASE_STATE_ID || 'regcall-main';
+const SUPABASE_TABLE = 'regcall_state';
+const supabaseEnabled = Boolean(SUPABASE_URL && SUPABASE_KEY);
+
+function supabaseHeaders(extra = {}) {
+  const headers = { apikey: SUPABASE_KEY, 'User-Agent': 'RegCall-Backend/1.0', ...extra };
+  // As chaves secretas novas autenticam pelo header apikey. A chave legada
+  // service_role continua precisando do JWT no Authorization.
+  if (!SUPABASE_KEY.startsWith('sb_secret_')) headers.Authorization = `Bearer ${SUPABASE_KEY}`;
+  return headers;
+}
 
 /* ------------------------------------------------------------------ */
 /* ICE servers                                                         */
@@ -66,6 +79,8 @@ const users = new Map();
 
 const MAX_MESSAGES_PER_CHANNEL = 300;
 const MAX_ROOMS = 200;
+let persistTimer = null;
+let persistQueue = Promise.resolve();
 
 const AVATAR_COLORS = [
   '#5865f2', '#3ba55c', '#faa61a', '#ed4245', '#eb459e',
@@ -74,6 +89,86 @@ const AVATAR_COLORS = [
 
 const ADJECTIVES = ['Rapido', 'Dourado', 'Silencioso', 'Curioso', 'Bravo', 'Elegante', 'Turbo', 'Sonoro'];
 const NOUNS = ['Tucano', 'Jaguar', 'Falcao', 'Lobo', 'Golfinho', 'Tatu', 'Coruja', 'Panda'];
+
+function storedRooms() {
+  return [...rooms.values()].map((room) => ({
+    id: room.id,
+    name: room.name,
+    code: room.code,
+    ownerUid: room.ownerUid,
+    createdAt: room.createdAt,
+    channels: room.channels,
+    messages: Object.fromEntries(room.messages),
+  }));
+}
+
+async function persistNow() {
+  if (!supabaseEnabled) return;
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/${SUPABASE_TABLE}?on_conflict=id`, {
+    method: 'POST',
+    headers: supabaseHeaders({
+      'Content-Type': 'application/json',
+      Prefer: 'resolution=merge-duplicates,return=minimal',
+    }),
+    body: JSON.stringify([{
+      id: SUPABASE_STATE_ID,
+      payload: { version: 1, rooms: storedRooms() },
+      updated_at: new Date().toISOString(),
+    }]),
+  });
+  if (!response.ok) {
+    throw new Error(`Supabase ${response.status}: ${await response.text()}`);
+  }
+}
+
+function schedulePersist() {
+  clearTimeout(persistTimer);
+  persistTimer = setTimeout(() => {
+    persistQueue = persistQueue.then(persistNow).catch((err) => {
+      console.error('[RegCall] falha ao salvar dados:', err);
+    });
+  }, 250);
+}
+
+async function loadStoredRooms() {
+  if (!supabaseEnabled) {
+    console.warn('[RegCall] Supabase não configurado; defina SUPABASE_URL e SUPABASE_SECRET_KEY.');
+    return;
+  }
+  try {
+    const response = await fetch(
+      `${SUPABASE_URL}/rest/v1/${SUPABASE_TABLE}?select=payload&id=eq.${encodeURIComponent(SUPABASE_STATE_ID)}&limit=1`,
+      { headers: supabaseHeaders() },
+    );
+    if (!response.ok) throw new Error(`Supabase ${response.status}: ${await response.text()}`);
+    const rows = await response.json();
+    const parsed = rows[0]?.payload || { rooms: [] };
+    for (const raw of Array.isArray(parsed.rooms) ? parsed.rooms : []) {
+      if (!raw?.id || !raw?.code || !Array.isArray(raw.channels)) continue;
+      const messages = new Map();
+      for (const channel of raw.channels) {
+        if (channel.type === 'text') {
+          const list = Array.isArray(raw.messages?.[channel.id]) ? raw.messages[channel.id] : [];
+          messages.set(channel.id, list.slice(-MAX_MESSAGES_PER_CHANNEL));
+        }
+      }
+      rooms.set(raw.id, {
+        id: raw.id,
+        name: sanitize(raw.name, 40) || 'Sala',
+        code: sanitize(raw.code, 12).toUpperCase(),
+        ownerUid: sanitize(raw.ownerUid, 64),
+        createdAt: Number(raw.createdAt) || Date.now(),
+        channels: raw.channels.slice(0, 40),
+        messages,
+        members: new Set(),
+        emptySince: null,
+      });
+    }
+    console.log(`  Dados carregados: ${rooms.size} sala(s) do Supabase`);
+  } catch (err) {
+    console.error('[RegCall] falha ao carregar dados do Supabase:', err);
+  }
+}
 
 function randomNick() {
   const a = ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)];
@@ -111,8 +206,8 @@ function createRoom(name, ownerUid) {
     channels: [
       { id: randomUUID(), name: 'geral', type: 'text' },
       { id: randomUUID(), name: 'avisos', type: 'text' },
-      { id: randomUUID(), name: 'Sala de Voz', type: 'voice' },
-      { id: randomUUID(), name: 'Jogatina', type: 'voice' },
+      { id: randomUUID(), name: 'Live Principal', type: 'voice' },
+      { id: randomUUID(), name: 'Transmissões', type: 'voice' },
     ],
     messages: new Map(), // channelId -> [msg]
     members: new Set(),  // socketIds
@@ -121,6 +216,7 @@ function createRoom(name, ownerUid) {
     if (ch.type === 'text') room.messages.set(ch.id, []);
   }
   rooms.set(id, room);
+  schedulePersist();
   return room;
 }
 
@@ -251,6 +347,7 @@ function pushMessage(room, channelId, msg) {
   const arr = room.messages.get(channelId);
   arr.push(msg);
   if (arr.length > MAX_MESSAGES_PER_CHANNEL) arr.splice(0, arr.length - MAX_MESSAGES_PER_CHANNEL);
+  schedulePersist();
 }
 
 /* ------------------------------------------------------------------ */
@@ -270,7 +367,13 @@ app.get('/api/config', (_req, res) => {
 });
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, rooms: rooms.size, users: users.size, uptime: process.uptime() });
+  res.json({
+    ok: true,
+    rooms: rooms.size,
+    users: users.size,
+    uptime: process.uptime(),
+    persistence: supabaseEnabled ? 'supabase' : 'disabled',
+  });
 });
 
 app.use(
@@ -294,9 +397,16 @@ const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: { origin: true, credentials: true },
   maxHttpBufferSize: 1e6,
-  pingTimeout: 25000,
-  pingInterval: 20000,
+  pingTimeout: 45000,
+  pingInterval: 25000,
+  connectTimeout: 30000,
+  perMessageDeflate: false,
+  httpCompression: true,
 });
+
+httpServer.keepAliveTimeout = 65_000;
+httpServer.headersTimeout = 70_000;
+httpServer.requestTimeout = 30_000;
 
 /* ------------------------------------------------------------------ */
 /* Socket.IO                                                           */
@@ -434,6 +544,7 @@ io.on('connection', (socket) => {
     const name = sanitize(payload.name, 40);
     if (!name) return fail(cb, 'Nome invalido.');
     room.name = name;
+    schedulePersist();
     ok(cb, {});
     broadcastRoom(room.id);
     broadcastDirectory();
@@ -456,6 +567,7 @@ io.on('connection', (socket) => {
     };
     room.channels.push(channel);
     if (type === 'text') room.messages.set(channel.id, []);
+    schedulePersist();
     ok(cb, { channel });
     broadcastRoom(room.id);
   });
@@ -469,6 +581,7 @@ io.on('connection', (socket) => {
     if (idx === -1) return fail(cb, 'Canal nao encontrado.');
     const [removed] = room.channels.splice(idx, 1);
     room.messages.delete(removed.id);
+    schedulePersist();
     // tira quem estava nesse canal de voz
     for (const sid of room.members) {
       const u = users.get(sid);
@@ -530,7 +643,7 @@ io.on('connection', (socket) => {
     const room = rooms.get(user.roomId);
     if (!room) return fail(cb, 'Voce nao esta em uma sala.');
     const channel = room.channels.find((c) => c.id === payload.channelId && c.type === 'voice');
-    if (!channel) return fail(cb, 'Canal de voz invalido.');
+    if (!channel) return fail(cb, 'Canal de live invalido.');
 
     if (user.voiceChannelId === channel.id) return ok(cb, { peers: voicePeers(user) });
     if (user.voiceChannelId) leaveVoice(user, { silent: true });
@@ -560,7 +673,8 @@ io.on('connection', (socket) => {
   socket.on('rtc:signal', (payload = {}) => {
     if (!user.authed || !payload.to) return;
     const target = users.get(payload.to);
-    if (!target || target.roomId !== user.roomId) return;
+    if (!target || target.roomId !== user.roomId || !user.voiceChannelId
+      || target.voiceChannelId !== user.voiceChannelId) return;
     io.to(payload.to).emit('rtc:signal', {
       from: user.id,
       description: payload.description,
@@ -610,7 +724,9 @@ io.on('connection', (socket) => {
 /* Limpeza de salas vazias                                             */
 /* ------------------------------------------------------------------ */
 
-const ROOM_TTL_MS = 1000 * 60 * 60; // 1h vazia -> apaga
+// Zero preserva salas vazias indefinidamente. Defina ROOM_TTL_HOURS para
+// servidores temporarios que devam fazer limpeza automatica.
+const ROOM_TTL_MS = Math.max(0, Number(process.env.ROOM_TTL_HOURS || 0)) * 60 * 60 * 1000;
 setInterval(() => {
   const now = Date.now();
   let changed = false;
@@ -619,8 +735,9 @@ setInterval(() => {
     for (const sid of room.members) if (users.has(sid)) online++;
     if (online === 0) {
       if (!room.emptySince) room.emptySince = now;
-      if (now - room.emptySince > ROOM_TTL_MS) {
+      if (ROOM_TTL_MS > 0 && now - room.emptySince > ROOM_TTL_MS) {
         rooms.delete(id);
+        schedulePersist();
         changed = true;
       }
     } else {
@@ -630,11 +747,33 @@ setInterval(() => {
   if (changed) broadcastDirectory();
 }, 60_000).unref?.();
 
+await loadStoredRooms();
+
 httpServer.listen(PORT, () => {
   const ice = buildIceServers();
   const hasTurn = ice.some((s) => JSON.stringify(s.urls).includes('turn'));
   console.log(`\n  ${APP_NAME} rodando em http://localhost:${PORT}`);
   console.log(`  TURN configurado: ${hasTurn ? 'sim' : 'NAO (so funciona na mesma rede/redes simples)'}`);
+  console.log(`  Supabase configurado: ${supabaseEnabled ? 'sim' : 'NAO'}`);
   if (SERVER_PASSWORD) console.log('  Senha do servidor: ativada');
   console.log('');
+});
+
+async function shutdown() {
+  clearTimeout(persistTimer);
+  try {
+    await persistQueue;
+    await persistNow();
+  } catch (err) {
+    console.error('[RegCall] falha ao salvar antes de encerrar:', err);
+  }
+  httpServer.close(() => process.exit(0));
+  setTimeout(() => process.exit(1), 5000).unref();
+}
+
+process.once('SIGTERM', shutdown);
+process.once('SIGINT', shutdown);
+
+process.on('unhandledRejection', (err) => {
+  console.error('[RegCall] operacao assincrona falhou:', err);
 });

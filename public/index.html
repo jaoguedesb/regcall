@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#1e1f22" />
 <title>RegCall</title>
-<link rel="icon" href="/assets/logo.png" type="image/png" />
-<link rel="apple-touch-icon" href="/assets/logo.png" />
+<link rel="icon" href="/assets/spider-logo.png" type="image/png" />
+<link rel="apple-touch-icon" href="/assets/spider-logo.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -19,10 +19,10 @@
   <div class="login-bg"></div>
   <div class="login-card">
     <div class="login-brand">
-      <img class="brand-logo" src="/assets/logo.png" alt="RegCall" data-fallback="/assets/logo.svg" />
+      <img class="brand-logo" src="/assets/spider-logo.png" alt="RegCall" />
       <div>
         <h1>RegCall</h1>
-        <p>Voz, tela e texto. Sem enrolaÃ§Ã£o.</p>
+        <p>Transmissão de tela com áudio da live e texto.</p>
       </div>
     </div>
 
@@ -43,7 +43,7 @@
 
     <button id="login-btn" class="btn btn-primary btn-lg">Entrar</button>
     <p id="login-error" class="login-error"></p>
-    <p class="login-foot">Ao entrar vocÃª concorda em nÃ£o gritar no microfone.</p>
+    <p class="login-foot">Entre, compartilhe sua tela e acompanhe a live.</p>
   </div>
 </div>
 
@@ -52,8 +52,8 @@
 
   <!-- Barra de salas (esquerda) -->
   <nav class="guilds" id="guilds">
-    <button class="guild home-guild active" id="btn-home" title="InÃ­cio" aria-label="InÃ­cio">
-      <img src="/assets/logo.png" alt="" data-fallback="/assets/logo.svg" />
+    <button class="guild home-guild active" id="btn-home" title="Início" aria-label="Início">
+      <img src="/assets/spider-logo.png" alt="" />
     </button>
     <div class="guild-sep"></div>
     <div class="guild-list" id="guild-list"></div>
@@ -68,20 +68,20 @@
   <!-- Barra de canais -->
   <aside class="sidebar" id="sidebar">
     <header class="sidebar-head" id="sidebar-head">
-      <span id="room-name">InÃ­cio</span>
+      <span id="room-name">Início</span>
       <svg class="chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
     </header>
 
     <div class="sidebar-scroll" id="channel-list"></div>
 
-    <!-- Painel de voz conectado -->
+    <!-- Painel da live conectado -->
     <div class="voice-panel hidden" id="voice-panel">
       <div class="voice-status">
         <div class="voice-status-main">
           <svg class="ico-signal" viewBox="0 0 24 24"><path d="M5 12.5a9 9 0 0 1 14 0"/><path d="M8.5 16a5 5 0 0 1 7 0"/><circle cx="12" cy="19" r="1.2"/></svg>
           <div>
-            <strong id="voice-state">Voz conectada</strong>
-            <small id="voice-where">â€”</small>
+            <strong id="voice-state">Live conectada</strong>
+            <small id="voice-where">—</small>
           </div>
         </div>
         <button class="icon-btn danger" id="btn-hangup" title="Desconectar">
@@ -94,32 +94,24 @@
       </div>
     </div>
 
-    <!-- Painel do usuÃ¡rio -->
+    <!-- Painel do usuário -->
     <div class="me-panel">
       <button class="me-info" id="btn-profile">
         <span class="avatar" id="me-avatar"></span>
         <span class="me-text">
-          <strong id="me-nick">â€”</strong>
+          <strong id="me-nick">—</strong>
           <small id="me-sub">online</small>
         </span>
       </button>
       <div class="me-actions">
-        <button class="icon-btn" id="btn-mic" title="Mutar microfone (Ctrl+M)">
-          <svg class="on" viewBox="0 0 24 24"><rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3.5M8.5 21.5h7"/></svg>
-          <svg class="off" viewBox="0 0 24 24"><rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3.5M8.5 21.5h7"/><path class="slash" d="M3 3l18 18"/></svg>
-        </button>
-        <button class="icon-btn" id="btn-deaf" title="Silenciar tudo (Ctrl+Shift+M)">
-          <svg class="on" viewBox="0 0 24 24"><path d="M4 14v-2a8 8 0 0 1 16 0v2"/><rect x="2.5" y="13" width="4.5" height="7" rx="2"/><rect x="17" y="13" width="4.5" height="7" rx="2"/></svg>
-          <svg class="off" viewBox="0 0 24 24"><path d="M4 14v-2a8 8 0 0 1 16 0v2"/><rect x="2.5" y="13" width="4.5" height="7" rx="2"/><rect x="17" y="13" width="4.5" height="7" rx="2"/><path class="slash" d="M3 3l18 18"/></svg>
-        </button>
-        <button class="icon-btn" id="btn-settings" title="ConfiguraÃ§Ãµes">
+        <button class="icon-btn" id="btn-settings" title="Configurações">
           <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 9 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 9a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1Z"/></svg>
         </button>
       </div>
     </div>
   </aside>
 
-  <!-- ConteÃºdo principal -->
+  <!-- Conteúdo principal -->
   <main class="main" id="main">
 
     <header class="topbar" id="topbar">
@@ -127,11 +119,11 @@
         <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
       </button>
       <span class="topbar-icon" id="topbar-icon">#</span>
-      <h2 id="topbar-title">InÃ­cio</h2>
+      <h2 id="topbar-title">Início</h2>
       <div class="topbar-divider"></div>
       <span class="topbar-sub" id="topbar-sub"></span>
       <div class="spacer"></div>
-      <button class="icon-btn" id="btn-invite" title="Convidar / cÃ³digo da sala">
+      <button class="icon-btn" id="btn-invite" title="Convidar / código da sala">
         <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
       </button>
       <button class="icon-btn" id="btn-members" title="Membros">
@@ -143,12 +135,12 @@
     <section class="view home-view" id="view-home">
       <div class="home-wrap">
         <div class="home-hero">
-          <img class="hero-logo" src="/assets/logo.png" alt="" data-fallback="/assets/logo.svg" />
+          <img class="hero-logo" src="/assets/spider-logo.png" alt="" />
           <h2>Bem-vindo ao RegCall</h2>
           <p>Crie uma sala, chame a galera e compartilhe sua tela em alta qualidade.</p>
           <div class="home-cta">
             <button class="btn btn-primary" id="home-create">Criar sala</button>
-            <button class="btn btn-ghost" id="home-join">Entrar com cÃ³digo</button>
+            <button class="btn btn-ghost" id="home-join">Entrar com código</button>
           </div>
         </div>
         <div class="home-list">
@@ -177,12 +169,6 @@
     <section class="view call-view hidden" id="view-call">
       <div class="stage" id="stage"></div>
       <div class="call-bar">
-        <button class="call-btn" id="cb-mic" title="Microfone">
-          <svg viewBox="0 0 24 24"><rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3.5M8.5 21.5h7"/><path class="slash" d="M3 3l18 18"/></svg>
-        </button>
-        <button class="call-btn" id="cb-deaf" title="Ãudio">
-          <svg viewBox="0 0 24 24"><path d="M4 14v-2a8 8 0 0 1 16 0v2"/><rect x="2.5" y="13" width="4.5" height="7" rx="2"/><rect x="17" y="13" width="4.5" height="7" rx="2"/><path class="slash" d="M3 3l18 18"/></svg>
-        </button>
         <button class="call-btn" id="cb-share" title="Compartilhar tela">
           <svg viewBox="0 0 24 24"><rect x="2.5" y="4" width="19" height="13" rx="2"/><path d="M8 20h8"/><path d="m12 7 3 3h-2v3h-2v-3H9l3-3Z"/></svg>
         </button>
@@ -192,7 +178,7 @@
         <button class="call-btn" id="cb-fullscreen" title="Tela cheia">
           <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
         </button>
-        <button class="call-btn hangup" id="cb-hangup" title="Sair da chamada">
+        <button class="call-btn hangup" id="cb-hangup" title="Sair da live">
           <svg viewBox="0 0 24 24"><path d="M3 10c6-4 12-4 18 0v4l-4 1-1-3a11 11 0 0 0-8 0l-1 3-4-1v-4Z"/></svg>
         </button>
       </div>
@@ -212,7 +198,7 @@
   <!-- criar sala -->
   <div class="modal hidden" id="modal-create">
     <h3>Criar uma sala</h3>
-    <p class="modal-sub">Sua sala, suas regras. VocÃª vira o dono dela.</p>
+    <p class="modal-sub">Sua sala, suas regras. Você vira o dono dela.</p>
     <label class="field"><span>Nome da sala</span>
       <input id="create-name" maxlength="40" placeholder="Ex: Squad da madrugada" />
     </label>
@@ -222,11 +208,11 @@
     </div>
   </div>
 
-  <!-- entrar por cÃ³digo -->
+  <!-- entrar por código -->
   <div class="modal hidden" id="modal-join">
     <h3>Entrar em uma sala</h3>
-    <p class="modal-sub">Cole o cÃ³digo de convite que te mandaram.</p>
-    <label class="field"><span>CÃ³digo</span>
+    <p class="modal-sub">Cole o código de convite que te mandaram.</p>
+    <label class="field"><span>Código</span>
       <input id="join-code" maxlength="8" placeholder="AB12CD" style="text-transform:uppercase;letter-spacing:.18em;font-weight:700" />
     </label>
     <div class="modal-actions">
@@ -243,7 +229,7 @@
         <span class="type-box"><b># Texto</b><small>Mensagens, links e memes</small></span>
       </label>
       <label class="type-opt"><input type="radio" name="chtype" value="voice" />
-        <span class="type-box"><b>ðŸ”Š Voz</b><small>Conversa e tela ao vivo</small></span>
+        <span class="type-box"><b>📺 Live</b><small>Transmissão de tela com áudio</small></span>
       </label>
     </div>
     <label class="field"><span>Nome do canal</span>
@@ -258,7 +244,7 @@
   <!-- convite -->
   <div class="modal hidden" id="modal-invite">
     <h3>Convidar pra sala</h3>
-    <p class="modal-sub">Quem tiver esse cÃ³digo entra na hora.</p>
+    <p class="modal-sub">Quem tiver esse código entra na hora.</p>
     <div class="invite-code" id="invite-code">------</div>
     <label class="field"><span>Link direto</span>
       <div class="copy-row">
@@ -286,67 +272,45 @@
     </div>
   </div>
 
-  <!-- configuraÃ§Ãµes -->
+  <!-- configurações -->
   <div class="modal modal-wide hidden" id="modal-settings">
-    <h3>ConfiguraÃ§Ãµes</h3>
-
-    <div class="settings-group">
-      <h4>Dispositivos</h4>
-      <label class="field"><span>Microfone</span>
-        <select id="sel-mic"></select>
-      </label>
-      <label class="field"><span>SaÃ­da de Ã¡udio</span>
-        <select id="sel-spk"></select>
-      </label>
-      <div class="mic-test">
-        <span>NÃ­vel do microfone</span>
-        <div class="meter"><div class="meter-fill" id="mic-meter"></div></div>
-      </div>
-    </div>
-
-    <div class="settings-group">
-      <h4>Processamento de voz</h4>
-      <label class="switch"><input type="checkbox" id="opt-echo" checked /><span></span> Cancelamento de eco</label>
-      <label class="switch"><input type="checkbox" id="opt-noise" checked /><span></span> SupressÃ£o de ruÃ­do</label>
-      <label class="switch"><input type="checkbox" id="opt-agc" checked /><span></span> Ganho automÃ¡tico</label>
-      <label class="switch"><input type="checkbox" id="opt-hq" /><span></span> Ãudio de alta qualidade (estÃ©reo 128 kbps)</label>
-    </div>
+    <h3>Configurações</h3>
 
     <div class="settings-group">
       <h4>Compartilhamento de tela</h4>
-      <label class="field"><span>ResoluÃ§Ã£o e taxa de quadros</span>
+      <label class="field"><span>Resolução e taxa de quadros</span>
         <select id="sel-quality"></select>
       </label>
       <label class="field"><span>Prioridade da imagem</span>
         <select id="sel-hint">
-          <option value="detail">Nitidez (texto, cÃ³digo, planilha)</option>
-          <option value="motion">Fluidez (jogos, vÃ­deo)</option>
+          <option value="detail">Nitidez (texto, código, planilha)</option>
+          <option value="motion">Fluidez (jogos, vídeo)</option>
         </select>
       </label>
-      <label class="field"><span>Codec de vÃ­deo</span>
+      <label class="field"><span>Codec de vídeo</span>
         <select id="sel-codec">
-          <option value="auto">AutomÃ¡tico (recomendado)</option>
-          <option value="AV1">AV1 â€” melhor compressÃ£o</option>
-          <option value="VP9">VP9 â€” Ã³timo pra texto</option>
-          <option value="H264">H.264 â€” mais compatÃ­vel</option>
-          <option value="VP8">VP8 â€” fallback</option>
+          <option value="auto">Automático (recomendado)</option>
+          <option value="AV1">AV1 — melhor compressão</option>
+          <option value="VP9">VP9 — ótimo pra texto</option>
+          <option value="H264">H.264 — mais compatível</option>
+          <option value="VP8">VP8 — fallback</option>
         </select>
       </label>
-      <label class="switch"><input type="checkbox" id="opt-sysaudio" checked /><span></span> Capturar Ã¡udio do sistema junto</label>
+      <label class="switch"><input type="checkbox" id="opt-sysaudio" checked /><span></span> Transmitir o áudio da live junto com a tela</label>
     </div>
 
     <div class="settings-group">
-      <h4>ConexÃ£o</h4>
-      <div class="stat-grid" id="conn-stats"><span class="muted">Entre em um canal de voz para ver as estatÃ­sticas.</span></div>
+      <h4>Conexão</h4>
+      <div class="stat-grid" id="conn-stats"><span class="muted">Entre em um canal de live para ver as estatísticas.</span></div>
     </div>
 
     <div class="settings-group">
-      <h4>DiagnÃ³stico</h4>
-      <p class="modal-sub" style="margin-bottom:12px">Se algo nÃ£o funcionar (principalmente o compartilhamento de tela), copie isto aqui.</p>
-      <pre class="diag" id="diag-out">Clique em â€œAtualizarâ€ para gerar.</pre>
+      <h4>Diagnóstico</h4>
+      <p class="modal-sub" style="margin-bottom:12px">Se algo não funcionar (principalmente o compartilhamento de tela), copie isto aqui.</p>
+      <pre class="diag" id="diag-out">Clique em “Atualizar” para gerar.</pre>
       <div class="diag-actions">
         <button class="btn btn-ghost" id="diag-refresh">Atualizar</button>
-        <button class="btn btn-primary" id="diag-copy">Copiar diagnÃ³stico</button>
+        <button class="btn btn-primary" id="diag-copy">Copiar diagnóstico</button>
       </div>
     </div>
 
@@ -355,10 +319,10 @@
     </div>
   </div>
 
-  <!-- qualidade rÃ¡pida -->
+  <!-- qualidade rápida -->
   <div class="modal hidden" id="modal-quality">
-    <h3>Qualidade da transmissÃ£o</h3>
-    <p class="modal-sub">Vale pra prÃ³xima vez que vocÃª comeÃ§ar a compartilhar â€” e ajusta o bitrate na hora se jÃ¡ estiver ao vivo.</p>
+    <h3>Qualidade da transmissão</h3>
+    <p class="modal-sub">Vale pra próxima vez que você começar a compartilhar — e ajusta o bitrate na hora se já estiver ao vivo.</p>
     <div class="quality-grid" id="quality-grid"></div>
     <div class="modal-actions">
       <button class="btn btn-ghost" data-close>Fechar</button>
@@ -380,4 +344,3 @@
 <script type="module" src="/js/app.js"></script>
 </body>
 </html>
-

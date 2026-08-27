@@ -2,9 +2,9 @@
  * RegCall — motor WebRTC (malha peer-to-peer)
  * ------------------------------------------------------------------
  * - Negociacao "perfeita" (perfect negotiation) para evitar colisao de ofertas
- * - Microfone + compartilhamento de tela (video + audio do sistema)
+ * - Compartilhamento de tela com o audio da transmissao
  * - Controle fino de bitrate, framerate, codec e degradacao
- * - Medicao de nivel de voz e estatisticas de conexao
+ * - Controle de qualidade e estatisticas de conexao
  */
 
 export const QUALITY_PRESETS = {
@@ -51,27 +51,14 @@ export class RTCEngine {
     /** @type {Map<string, {streams: Map<string, MediaStream>, kinds: Object}>} */
     this.remote = new Map();
 
-    this.micStream = null;
     this.screenStream = null;
     this.lastScreenError = null;
-    this.micEnabled = true;
-    this.deafened = false;
-
-    this.audioCtx = null;
-    /** @type {Map<string, HTMLAudioElement>} */
-    this.audioEls = new Map();
 
     this.settings = {
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true,
-      hqAudio: false,
       quality: '1080p60',
       contentHint: 'detail',
       codec: 'auto',
       systemAudio: true,
-      micDeviceId: '',
-      speakerDeviceId: '',
     };
 
     this._bindSocket();
@@ -92,64 +79,6 @@ export class RTCEngine {
       entry.kinds = map || {};
       this.on.streams();
     });
-  }
-
-  /* ================= microfone ================= */
-
-  async ensureMic() {
-    if (this.micStream && this.micStream.getAudioTracks().some((t) => t.readyState === 'live')) {
-      return this.micStream;
-    }
-    const s = this.settings;
-    const audio = {
-      echoCancellation: s.echoCancellation,
-      noiseSuppression: s.noiseSuppression,
-      autoGainControl: s.autoGainControl,
-      channelCount: s.hqAudio ? 2 : 1,
-    };
-    if (s.micDeviceId) audio.deviceId = { exact: s.micDeviceId };
-
-    const stream = await navigator.mediaDevices.getUserMedia({ audio, video: false });
-    this.micStream = stream;
-    for (const t of stream.getAudioTracks()) {
-      t.enabled = this.micEnabled;
-      t.contentHint = s.hqAudio ? 'music' : 'speech';
-    }
-    this._publishTrackMap();
-    return stream;
-  }
-
-  /** Troca o dispositivo/processamento do microfone sem derrubar as conexoes. */
-  async reloadMic() {
-    const old = this.micStream;
-    this.micStream = null;
-    let fresh;
-    try {
-      fresh = await this.ensureMic();
-    } catch (err) {
-      this.micStream = old;
-      throw err;
-    }
-    const newTrack = fresh.getAudioTracks()[0];
-    for (const peer of this.peers.values()) {
-      const sender = peer.pc.getSenders().find((sd) => sd.track && sd.track.kind === 'audio');
-      if (sender && newTrack) {
-        try { await sender.replaceTrack(newTrack); } catch (e) { console.warn('replaceTrack', e); }
-      }
-    }
-    if (old && old !== fresh) old.getTracks().forEach((t) => t.stop());
-    this._publishTrackMap();
-    return fresh;
-  }
-
-  setMicEnabled(enabled) {
-    this.micEnabled = enabled;
-    if (this.micStream) this.micStream.getAudioTracks().forEach((t) => { t.enabled = enabled; });
-  }
-
-  setDeafened(deaf) {
-    this.deafened = deaf;
-    for (const el of this.audioEls.values()) el.muted = deaf;
   }
 
   /* ================= tela ================= */
@@ -291,10 +220,7 @@ export class RTCEngine {
       endereco: location.origin,
       contextoSeguro: window.isSecureContext,
       mediaDevices: Boolean(md),
-      getUserMedia: typeof md?.getUserMedia === 'function',
       getDisplayMedia: typeof md?.getDisplayMedia === 'function',
-      permissaoMicrofone: 'desconhecida',
-      microfoneAtivo: Boolean(this.micStream),
       dentroDeIframe: window.top !== window.self,
       paginaVisivel: document.visibilityState,
       peersConectados: this.peers.size,
@@ -307,10 +233,6 @@ export class RTCEngine {
       codecsDeVideo: '—',
       ultimoErroDeTela: this.lastScreenError || 'nenhum',
     };
-    try {
-      const p = await navigator.permissions.query({ name: 'microphone' });
-      out.permissaoMicrofone = p.state;
-    } catch (e) { /* Firefox/Safari nao expoem */ }
     try {
       const caps = RTCRtpSender.getCapabilities('video');
       out.codecsDeVideo = [...new Set(caps.codecs.map((c) => c.mimeType.split('/')[1]))].join(', ');
@@ -439,12 +361,12 @@ export class RTCEngine {
       ev.track.addEventListener('ended', () => this.on.streams());
       ev.track.addEventListener('mute', () => this.on.streams());
       ev.track.addEventListener('unmute', () => this.on.streams());
-      this._attachAudio(peerId, stream);
       this.on.streams();
     };
 
     pc.onconnectionstatechange = () => {
       this.on.peerState(peerId, pc.connectionState);
+      if (pc.connectionState === 'connected') this.resumeAudio();
       if (pc.connectionState === 'failed') this._restartIce(peer);
     };
 
@@ -461,11 +383,6 @@ export class RTCEngine {
     };
 
     // publica as midias locais
-    if (this.micStream) {
-      for (const t of this.micStream.getAudioTracks()) {
-        try { pc.addTrack(t, this.micStream); } catch (e) { console.warn(e); }
-      }
-    }
     if (this.screenStream) {
       for (const t of this.screenStream.getTracks()) {
         try { pc.addTrack(t, this.screenStream); } catch (e) { console.warn(e); }
@@ -484,14 +401,6 @@ export class RTCEngine {
       clearTimeout(peer.restartTimer);
       try { peer.pc.ontrack = null; peer.pc.onicecandidate = null; peer.pc.close(); } catch (e) { /* ignore */ }
       this.peers.delete(peerId);
-    }
-    const el = this.audioEls.get(peerId);
-    if (el) { el.srcObject = null; el.remove(); this.audioEls.delete(peerId); }
-    for (const key of [...this.audioEls.keys()]) {
-      if (key.startsWith(`${peerId}|`)) {
-        const e2 = this.audioEls.get(key);
-        e2.srcObject = null; e2.remove(); this.audioEls.delete(key);
-      }
     }
     this.remote.delete(peerId);
     this._lastStats.delete(peerId);
@@ -546,8 +455,12 @@ export class RTCEngine {
       err.name = 'InvalidStateError';
       throw err;
     }
-    if (this.settings.hqAudio && desc.sdp) {
-      desc.sdp = mungeOpus(desc.sdp, { stereo: true, bitrate: 128000 });
+    if (desc.sdp) {
+      desc.sdp = mungeOpus(desc.sdp, {
+        stereo: true,
+        bitrate: 128000,
+        dtx: false,
+      });
     }
     await pc.setLocalDescription(desc);
   }
@@ -603,7 +516,6 @@ export class RTCEngine {
 
   _localTrackMap() {
     const map = {};
-    if (this.micStream) map[this.micStream.id] = 'mic';
     if (this.screenStream) map[this.screenStream.id] = 'screen';
     return map;
   }
@@ -613,102 +525,27 @@ export class RTCEngine {
     this.socket.emit('rtc:tracks', { map: this._localTrackMap() });
   }
 
-  /** Retorna { mic: MediaStream|null, screen: MediaStream|null } de um peer. */
+  /** Retorna somente a transmissao de tela de um peer. */
   mediaOf(peerId) {
     const entry = this.remote.get(peerId);
-    const out = { mic: null, screen: null };
+    const out = { screen: null };
     if (!entry) return out;
     for (const [id, stream] of entry.streams) {
       const kind = entry.kinds[id];
       if (kind === 'screen') out.screen = stream;
-      else if (kind === 'mic') out.mic = stream;
       else if (!kind) {
-        // fallback: se tem video, e tela; senao e microfone
+        // Uma faixa de audio isolada nao faz parte do modo live.
         if (stream.getVideoTracks().length) out.screen = out.screen || stream;
-        else out.mic = out.mic || stream;
       }
     }
     if (out.screen && out.screen.getVideoTracks().every((t) => t.readyState === 'ended')) out.screen = null;
     return out;
   }
 
-  /* ================= audio remoto ================= */
-
-  _attachAudio(peerId, stream) {
-    // Cada stream ganha seu proprio elemento de audio escondido.
-    // O video da tela e tratado pela UI (o <video> toca o audio do sistema).
-    const key = `${peerId}|${stream.id}`;
-    if (this.audioEls.has(key)) return;
-    if (!stream.getAudioTracks().length) return;
-
-    const el = document.createElement('audio');
-    el.autoplay = true;
-    el.playsInline = true;
-    el.muted = this.deafened;
-    el.srcObject = stream;
-    el.dataset.peer = peerId;
-    el.style.display = 'none';
-    document.body.appendChild(el);
-    this.audioEls.set(key, el);
-    this._applySink(el);
-    el.play().catch(() => { /* autoplay bloqueado — resolvido no primeiro clique */ });
-  }
-
-  async _applySink(el) {
-    const id = this.settings.speakerDeviceId;
-    if (!id || typeof el.setSinkId !== 'function') return;
-    try { await el.setSinkId(id); } catch (e) { /* nao suportado */ }
-  }
-
-  async applySpeaker() {
-    for (const el of this.audioEls.values()) await this._applySink(el);
-    for (const el of document.querySelectorAll('video[data-rc-media]')) await this._applySink(el);
-  }
-
-  resumeAudio() {
-    for (const el of this.audioEls.values()) el.play().catch(() => {});
-    if (this.audioCtx && this.audioCtx.state === 'suspended') this.audioCtx.resume().catch(() => {});
-  }
-
-  /* ================= nivel de voz ================= */
-
-  ctx() {
-    if (!this.audioCtx) {
-      const Ctx = window.AudioContext || window.webkitAudioContext;
-      this.audioCtx = new Ctx();
-    }
-    if (this.audioCtx.state === 'suspended') this.audioCtx.resume().catch(() => {});
-    return this.audioCtx;
-  }
-
-  createMeter(stream) {
-    if (!stream || !stream.getAudioTracks().length) return null;
-    try {
-      const ctx = this.ctx();
-      const src = ctx.createMediaStreamSource(stream);
-      const analyser = ctx.createAnalyser();
-      analyser.fftSize = 512;
-      analyser.smoothingTimeConstant = 0.25;
-      src.connect(analyser);
-      const buf = new Uint8Array(analyser.frequencyBinCount);
-      return {
-        level() {
-          analyser.getByteTimeDomainData(buf);
-          let peak = 0;
-          for (let i = 0; i < buf.length; i++) {
-            const v = Math.abs(buf[i] - 128) / 128;
-            if (v > peak) peak = v;
-          }
-          return peak;
-        },
-        stop() {
-          try { src.disconnect(); analyser.disconnect(); } catch (e) { /* ignore */ }
-        },
-      };
-    } catch (e) {
-      console.warn('meter', e);
-      return null;
-    }
+  async resumeAudio() {
+    const plays = [...document.querySelectorAll('video[data-rc-media]')]
+      .map((el) => el.play().catch(() => {}));
+    await Promise.allSettled(plays);
   }
 
   /* ================= estatisticas ================= */
@@ -787,7 +624,7 @@ export class RTCEngine {
 /* ================= util ================= */
 
 /** Ajusta o fmtp do Opus para estereo + bitrate alto. */
-function mungeOpus(sdp, { stereo, bitrate }) {
+function mungeOpus(sdp, { stereo, bitrate, dtx = false }) {
   try {
     const eol = sdp.includes('\r\n') ? '\r\n' : '\n';
     const lines = sdp.split(eol);
@@ -797,6 +634,7 @@ function mungeOpus(sdp, { stereo, bitrate }) {
     const params = [
       'minptime=10',
       'useinbandfec=1',
+      `usedtx=${dtx ? 1 : 0}`,
       `stereo=${stereo ? 1 : 0}`,
       `sprop-stereo=${stereo ? 1 : 0}`,
       `maxaveragebitrate=${bitrate}`,

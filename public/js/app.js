@@ -80,7 +80,6 @@ const state = {
   activeChannel: null,     // {id,name,type}
   voiceChannelId: null,
   view: 'home',            // home | chat | call
-  speaking: new Set(),
   focused: null,
   typingUsers: new Map(),
   pendingJoinCode: null,
@@ -139,15 +138,15 @@ async function boot() {
 }
 
 /**
- * Sem HTTPS (ou localhost) o navegador bloqueia microfone E captura de tela.
+ * Sem HTTPS (ou localhost) o navegador bloqueia a captura de tela.
  * É de longe o motivo nº 1 de "não funciona" — então avisa antes de tentar.
  */
 function warnInsecureContext() {
   if (window.isSecureContext) return;
   const host = location.hostname;
   const url = `http://localhost:${location.port || 80}${location.pathname}`;
-  const msg = `Você abriu o RegCall por "${location.origin}". Sem HTTPS o navegador bloqueia o `
-    + `microfone e a captura de tela.<br><br>`
+  const msg = `Você abriu o RegCall por "${location.origin}". Sem HTTPS o navegador bloqueia a `
+    + `captura de tela e do áudio da live.<br><br>`
     + (['localhost', '127.0.0.1'].includes(host)
       ? 'Estranho: localhost deveria ser considerado seguro. Atualize o navegador.'
       : `Na mesma máquina, acesse <b>${escapeHtml(url)}</b>. Para acessar de outros aparelhos, publique com HTTPS (Render, Railway, ou Cloudflare Tunnel).`);
@@ -228,7 +227,16 @@ function cryptoId() {
 function connectSocket() {
   return new Promise((resolve, reject) => {
     if (state.socket && state.socket.connected) return resolve();
-    const socket = window.io({ transports: ['websocket', 'polling'], reconnectionDelayMax: 4000 });
+    const socket = window.io({
+      // Comeca com polling e sobe para WebSocket quando a rede/proxy permite.
+      // Forcar WebSocket primeiro causava quedas em redes moveis e corporativas.
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 800,
+      reconnectionDelayMax: 8000,
+      randomizationFactor: 0.5,
+      timeout: 20000,
+    });
     state.socket = socket;
 
     const timer = setTimeout(() => reject(new Error('Servidor não respondeu.')), 12000);
@@ -251,32 +259,41 @@ function connectSocket() {
 }
 
 async function reAuthenticate() {
-  const resp = await emit('auth', {
-    nick: state.me.nick, color: state.me.color, uid: state.me.uid,
-    password: $('#login-pass').value,
-  });
-  if (!resp.ok) { toast(resp.error, 'error'); return; }
-  state.me = { ...state.me, ...resp.me };
-  state.directory = resp.rooms || [];
-  renderMe();
-  renderDirectory();
-  const roomId = state.room?.id;
-  const code = state.room?.code;
-  if (roomId) {
-    const r = await emit('room:join', { roomId, code });
-    if (r.ok) {
-      state.room = r.room;
-      renderRoom();
-      toast('Reconectado!', 'success');
-      if (state.voiceChannelId) {
-        const ch = state.voiceChannelId;
-        state.voiceChannelId = null;
-        joinVoice(ch);
+  if (state._reconnecting) return;
+  state._reconnecting = true;
+  try {
+    const resp = await emit('auth', {
+      nick: state.me.nick, color: state.me.color, uid: state.me.uid,
+      password: $('#login-pass').value,
+    });
+    if (!resp.ok) { toast(resp.error, 'error'); return; }
+    state.me = { ...state.me, ...resp.me };
+    state.directory = resp.rooms || [];
+    renderMe();
+    renderDirectory();
+    const roomId = state.room?.id;
+    const code = state.room?.code;
+    if (roomId) {
+      const r = await emit('room:join', { roomId, code });
+      if (r.ok) {
+        state.room = r.room;
+        renderRoom();
+        toast('Reconectado!', 'success');
+        if (state.voiceChannelId) {
+          const ch = state.voiceChannelId;
+          state.voiceChannelId = null;
+          await joinVoice(ch);
+        }
+      } else {
+        state.room = null;
+        showHome();
       }
-    } else {
-      state.room = null;
-      showHome();
     }
+  } catch (err) {
+    console.error('[RegCall] falha ao restaurar sessao:', err);
+    toast('Reconectei ao servidor, mas nao consegui restaurar a chamada.', 'error');
+  } finally {
+    state._reconnecting = false;
   }
 }
 
@@ -321,10 +338,6 @@ function bindSocketEvents(socket) {
     renderTyping();
   });
 
-  socket.on('peer:speaking', ({ id, speaking }) => {
-    if (speaking) state.speaking.add(id); else state.speaking.delete(id);
-    paintSpeaking();
-  });
 
   socket.on('voice:kicked', () => {
     leaveVoice();
@@ -352,7 +365,6 @@ function setupEngine() {
     },
   });
   applySettingsToEngine();
-  startMeterLoop();
 
   // destrava o audio no primeiro clique (política de autoplay)
   const unlock = () => { state.engine.resumeAudio(); };
@@ -492,7 +504,7 @@ function renderRoom() {
 
   list.appendChild(categoryEl('Canais de texto'));
   for (const ch of text) list.appendChild(channelEl(ch));
-  list.appendChild(categoryEl('Canais de voz'));
+  list.appendChild(categoryEl('Canais de live'));
   for (const ch of voice) {
     list.appendChild(channelEl(ch));
     const members = room.members.filter((m) => m.voiceChannelId === ch.id);
@@ -506,7 +518,6 @@ function renderRoom() {
 
   renderMembers();
   renderVoicePanel();
-  paintSpeaking();
   if (state.view === 'call') renderStage();
   if (state.view === 'chat') {
     const n = room.members.length;
@@ -527,7 +538,7 @@ function categoryEl(label) {
   add.title = 'Criar canal';
   add.addEventListener('click', (e) => {
     e.stopPropagation();
-    const isVoice = label.includes('voz');
+    const isVoice = label.includes('live');
     $(`input[name="chtype"][value="${isVoice ? 'voice' : 'text'}"]`).checked = true;
     openModal('#modal-channel');
   });
@@ -557,8 +568,6 @@ function voiceMemberEl(m) {
   row.dataset.peer = m.id;
   const badges = [];
   if (m.sharing) badges.push(`<span class="live">${ICONS.screen}</span>`);
-  if (m.muted) badges.push(ICONS.micOff);
-  if (m.deafened) badges.push(ICONS.deafOff);
   row.innerHTML = `
     <span class="avatar" style="background:${m.color}">${escapeHtml(initials(m.nick))}</span>
     <span class="nm">${escapeHtml(m.nick)}</span>
@@ -581,8 +590,6 @@ function renderMembers() {
     row.dataset.peer = m.id;
     const badges = [];
     if (m.sharing) badges.push(`<span class="live">${ICONS.screen}</span>`);
-    if (m.muted) badges.push(ICONS.micOff);
-    if (m.deafened) badges.push(ICONS.deafOff);
     row.innerHTML = `
       <span class="avatar-wrap">
         <span class="avatar" style="background:${m.color}">${escapeHtml(initials(m.nick))}</span>
@@ -650,9 +657,9 @@ function showCall(ch) {
   $('#view-home').classList.add('hidden');
   $('#view-chat').classList.add('hidden');
   $('#view-call').classList.remove('hidden');
-  $('#topbar-icon').textContent = '🔊';
+  $('#topbar-icon').textContent = '📺';
   $('#topbar-title').textContent = ch.name;
-  $('#topbar-sub').textContent = 'Canal de voz';
+  $('#topbar-sub').textContent = 'Canal de live';
   renderStage();
   closeNav();
 }
@@ -712,13 +719,6 @@ setInterval(renderTyping, 2000);
 
 async function joinVoice(channelId) {
   if (state.voiceChannelId === channelId) return;
-  try {
-    await state.engine.ensureMic();
-  } catch (err) {
-    toast('Não consegui acessar o microfone. Libere a permissão no navegador.', 'error');
-    console.error(err);
-    return;
-  }
   if (state.voiceChannelId) {
     state.engine.closeAll();
     await emit('voice:leave', {});
@@ -731,7 +731,7 @@ async function joinVoice(channelId) {
   for (const p of resp.peers || []) state.engine.addPeer(p.peerId, p.polite);
 
   state.engine.startStats(2000);
-  state.socket.emit('me:state', { muted: !state.engine.micEnabled, deafened: state.engine.deafened, sharing: false });
+  state.socket.emit('me:state', { muted: true, deafened: false, sharing: false });
   renderVoicePanel();
   renderStage();
 }
@@ -757,7 +757,7 @@ function renderVoicePanel() {
   if (!state.voiceChannelId) { panel.classList.add('hidden'); return; }
   panel.classList.remove('hidden');
   const ch = state.room?.channels.find((c) => c.id === state.voiceChannelId);
-  $('#voice-where').textContent = `${ch ? ch.name : 'Voz'} / ${state.room ? state.room.name : ''}`;
+  $('#voice-where').textContent = `${ch ? ch.name : 'Live'} / ${state.room ? state.room.name : ''}`;
   $('#btn-share').classList.toggle('active', state.engine.isSharing);
   $('#cb-share').classList.toggle('live', state.engine.isSharing);
   $('#quality-label').textContent = QUALITY_PRESETS[state.engine.settings.quality].label;
@@ -814,7 +814,6 @@ function renderStage() {
   stage.classList.toggle('focus-mode', Boolean(state.focused && tiles.has(state.focused)));
   for (const [id, t] of tiles) t.root.classList.toggle('focused', id === state.focused);
 
-  paintSpeaking();
 }
 
 function createTile(peerId) {
@@ -883,7 +882,9 @@ function updateTile(tile, p) {
       tile.streamId = stream.id;
       tile.video.play().catch(() => {});
     }
-    tile.video.muted = isMe ? true : state.engine.deafened;
+    // A propria live fica muda para evitar retorno; espectadores ouvem apenas
+    // o audio que veio junto com a transmissao de tela.
+    tile.video.muted = isMe;
     tile.video.classList.remove('hidden');
     tile.avatar.classList.add('hidden');
     tile.badge.classList.remove('hidden');
@@ -900,89 +901,7 @@ function updateTile(tile, p) {
   }
 
   const badges = [];
-  if (p.muted) badges.push(`<span class="muted-ico">${ICONS.micOff}</span>`);
-  if (p.deafened) badges.push(`<span class="muted-ico">${ICONS.deafOff}</span>`);
   tile.label.innerHTML = `<span class="nm">${escapeHtml(p.nick)}${isMe ? ' (você)' : ''}</span>${badges.join('')}`;
-}
-
-function paintSpeaking() {
-  const speaking = state.speaking;
-  for (const el of $$('[data-peer]')) {
-    const id = el.dataset.peer;
-    el.classList.toggle('speaking', speaking.has(id));
-  }
-}
-
-/* ============================ medidor de voz ============================ */
-
-const meters = new Map();
-let lastSpeakEmit = 0;
-let lastSpeakValue = false;
-
-function startMeterLoop() {
-  let last = 0;
-  const tick = (now) => {
-    requestAnimationFrame(tick);
-    if (now - last < 70) return;
-    last = now;
-    if (!state.engine) return;
-
-    // local
-    const eng = state.engine;
-    if (eng.micStream) {
-      if (!meters.has('self')) {
-        const m = eng.createMeter(eng.micStream);
-        if (m) meters.set('self', m);
-      }
-      const m = meters.get('self');
-      if (m) {
-        const lvl = m.level();
-        const speaking = eng.micEnabled && lvl > 0.055;
-        setSpeakingLocal(speaking);
-        const bar = $('#mic-meter');
-        if (bar && !$('#modal-settings').classList.contains('hidden')) {
-          bar.style.width = `${Math.min(100, Math.round(lvl * 180))}%`;
-        }
-      }
-    } else if (meters.has('self')) {
-      meters.get('self').stop(); meters.delete('self');
-      setSpeakingLocal(false);
-    }
-
-    // remotos
-    for (const peerId of eng.peers.keys()) {
-      const media = eng.mediaOf(peerId);
-      const key = `p:${peerId}`;
-      if (media.mic) {
-        if (!meters.has(key) || meters.get(key).streamId !== media.mic.id) {
-          meters.get(key)?.stop?.();
-          const m = eng.createMeter(media.mic);
-          if (m) { m.streamId = media.mic.id; meters.set(key, m); }
-        }
-        const m = meters.get(key);
-        if (m) {
-          const speaking = m.level() > 0.055;
-          if (speaking) state.speaking.add(peerId); else state.speaking.delete(peerId);
-        }
-      } else if (meters.has(key)) {
-        meters.get(key).stop(); meters.delete(key); state.speaking.delete(peerId);
-      }
-    }
-    paintSpeaking();
-  };
-  requestAnimationFrame(tick);
-}
-
-function setSpeakingLocal(speaking) {
-  const me = state.me?.id;
-  if (!me) return;
-  if (speaking) state.speaking.add(me); else state.speaking.delete(me);
-  const now = Date.now();
-  if (speaking !== lastSpeakValue && now - lastSpeakEmit > 150) {
-    lastSpeakValue = speaking;
-    lastSpeakEmit = now;
-    if (state.voiceChannelId) state.socket.emit('me:speaking', { speaking });
-  }
 }
 
 /* ============================ estatísticas ============================ */
@@ -991,7 +910,7 @@ function renderStats(s) {
   const root = $('#conn-stats');
   if (!root) return;
   if (!s) {
-    root.innerHTML = '<span class="muted">Entre em um canal de voz para ver as estatísticas.</span>';
+    root.innerHTML = '<span class="muted">Entre em um canal de live para ver as estatísticas.</span>';
     return;
   }
   root.innerHTML = `
@@ -1012,7 +931,7 @@ function renderStats(s) {
     else if (s.rtt > 120 || s.loss > 3) panel.classList.add('weak');
   }
   $('#voice-state').textContent = panel.classList.contains('bad')
-    ? 'Conexão instável' : panel.classList.contains('weak') ? 'Voz conectada' : 'Voz conectada';
+    ? 'Conexão instável' : 'Live conectada';
 
   // estatística no tile de quem compartilha (resolução real do vídeo daquele tile)
   for (const [, tile] of tiles) {
@@ -1054,7 +973,6 @@ async function renderDiagnostics() {
     out.innerHTML = escapeHtml(text)
       .replace(/^(contextoSeguro\s+)false$/m, '$1<span class="bad">false</span>')
       .replace(/^(getDisplayMedia\s+)false$/m, '$1<span class="bad">false</span>')
-      .replace(/^(permissaoMicrofone\s+)denied$/m, '$1<span class="bad">denied</span>')
       .replace(/^(ultimo erro de tela\s+)(?!nenhum)(.+)$/m, '$1<span class="bad">$2</span>');
   } catch (err) {
     out.textContent = `Falha ao gerar diagnóstico: ${err.message}`;
@@ -1062,23 +980,6 @@ async function renderDiagnostics() {
 }
 
 /* ============================ controles ============================ */
-
-function setMuted(muted) {
-  state.engine.setMicEnabled(!muted);
-  $('#btn-mic').classList.toggle('is-off', muted);
-  $('#cb-mic').classList.toggle('is-off', muted);
-  state.socket.emit('me:state', { muted });
-  if (muted) setSpeakingLocal(false);
-}
-
-function setDeafened(deaf) {
-  state.engine.setDeafened(deaf);
-  $('#btn-deaf').classList.toggle('is-off', deaf);
-  $('#cb-deaf').classList.toggle('is-off', deaf);
-  if (deaf && !$('#btn-mic').classList.contains('is-off')) setMuted(true);
-  state.socket.emit('me:state', { deafened: deaf });
-  renderStage();
-}
 
 function setSharing(sharing) {
   $('#btn-share').classList.toggle('active', sharing);
@@ -1124,7 +1025,7 @@ async function toggleShare() {
     return;
   }
   if (!state.voiceChannelId) {
-    toast('Entre em um canal de voz antes de compartilhar a tela.', 'error');
+    toast('Entre em um canal de live antes de transmitir a tela.', 'error');
     return;
   }
 
@@ -1204,21 +1105,11 @@ async function applyQuality(key) {
 
 function loadSettings() {
   const s = {
-    echoCancellation: store.get('echo', true),
-    noiseSuppression: store.get('noise', true),
-    autoGainControl: store.get('agc', true),
-    hqAudio: store.get('hq', false),
     quality: store.get('quality', '1080p60'),
     contentHint: store.get('hint', 'detail'),
     codec: store.get('codec', 'auto'),
     systemAudio: store.get('sysaudio', true),
-    micDeviceId: store.get('mic', ''),
-    speakerDeviceId: store.get('spk', ''),
   };
-  $('#opt-echo').checked = s.echoCancellation;
-  $('#opt-noise').checked = s.noiseSuppression;
-  $('#opt-agc').checked = s.autoGainControl;
-  $('#opt-hq').checked = s.hqAudio;
   $('#sel-quality').value = s.quality;
   $('#sel-hint').value = s.contentHint;
   $('#sel-codec').value = s.codec;
@@ -1230,34 +1121,6 @@ function loadSettings() {
 function applySettingsToEngine() {
   Object.assign(state.engine.settings, state._settings || {});
   markQuality();
-}
-
-async function refreshDevices() {
-  try {
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    const mics = devices.filter((d) => d.kind === 'audioinput');
-    const spks = devices.filter((d) => d.kind === 'audiooutput');
-    fillSelect($('#sel-mic'), mics, state.engine.settings.micDeviceId, 'Microfone padrão');
-    fillSelect($('#sel-spk'), spks, state.engine.settings.speakerDeviceId, 'Saída padrão');
-    if (!spks.length || typeof HTMLMediaElement.prototype.setSinkId !== 'function') {
-      $('#sel-spk').disabled = true;
-      $('#sel-spk').innerHTML = '<option>Controlado pelo sistema</option>';
-    }
-  } catch (e) { console.warn('enumerateDevices', e); }
-}
-
-function fillSelect(sel, devices, current, defaultLabel) {
-  sel.innerHTML = '';
-  const def = document.createElement('option');
-  def.value = ''; def.textContent = defaultLabel;
-  sel.appendChild(def);
-  devices.forEach((d, i) => {
-    const o = document.createElement('option');
-    o.value = d.deviceId;
-    o.textContent = d.label || `Dispositivo ${i + 1}`;
-    sel.appendChild(o);
-  });
-  sel.value = current || '';
 }
 
 /* ============================ nav mobile ============================ */
@@ -1348,7 +1211,6 @@ function wireUI() {
   $('#btn-settings').addEventListener('click', async () => {
     openModal('#modal-settings');
     markQuality();
-    await refreshDevices();
     renderDiagnostics();
   });
   $('#diag-refresh').addEventListener('click', renderDiagnostics);
@@ -1377,17 +1239,6 @@ function wireUI() {
       if (after) await after(value);
     });
   };
-  const reloadMicSafe = async () => {
-    if (!state.engine.micStream) return;
-    try { await state.engine.reloadMic(); toast('Microfone atualizado.', 'success'); }
-    catch (e) { toast('Não consegui aplicar no microfone.', 'error'); }
-  };
-  bindOpt('#opt-echo', 'echoCancellation', 'echo', reloadMicSafe);
-  bindOpt('#opt-noise', 'noiseSuppression', 'noise', reloadMicSafe);
-  bindOpt('#opt-agc', 'autoGainControl', 'agc', reloadMicSafe);
-  bindOpt('#opt-hq', 'hqAudio', 'hq', reloadMicSafe);
-  bindOpt('#sel-mic', 'micDeviceId', 'mic', reloadMicSafe);
-  bindOpt('#sel-spk', 'speakerDeviceId', 'spk', () => state.engine.applySpeaker());
   bindOpt('#sel-hint', 'contentHint', 'hint', () => state.engine.applyQualityLive());
   bindOpt('#sel-codec', 'codec', 'codec', () => {
     if (state.engine.isSharing) toast('O codec vale na próxima transmissão.', '');
@@ -1399,11 +1250,7 @@ function wireUI() {
   $('#btn-quality').addEventListener('click', () => { markQuality(); openModal('#modal-quality'); });
   $('#cb-quality').addEventListener('click', () => { markQuality(); openModal('#modal-quality'); });
 
-  // controles de voz
-  $('#btn-mic').addEventListener('click', () => setMuted(!$('#btn-mic').classList.contains('is-off')));
-  $('#cb-mic').addEventListener('click', () => setMuted(!$('#btn-mic').classList.contains('is-off')));
-  $('#btn-deaf').addEventListener('click', () => setDeafened(!$('#btn-deaf').classList.contains('is-off')));
-  $('#cb-deaf').addEventListener('click', () => setDeafened(!$('#btn-deaf').classList.contains('is-off')));
+  // controles da live
   $('#btn-share').addEventListener('click', toggleShare);
   $('#cb-share').addEventListener('click', toggleShare);
   $('#btn-hangup').addEventListener('click', leaveVoice);
@@ -1483,13 +1330,6 @@ function wireUI() {
       if (!$('#modal-root').classList.contains('hidden')) closeModal();
       else if (state.focused) { state.focused = null; renderStage(); }
     }
-    // atalhos
-    if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'm') {
-      e.preventDefault(); if (state.voiceChannelId) setMuted(!$('#btn-mic').classList.contains('is-off'));
-    }
-    if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'm') {
-      e.preventDefault(); if (state.voiceChannelId) setDeafened(!$('#btn-deaf').classList.contains('is-off'));
-    }
   });
 
   window.addEventListener('beforeunload', () => {
@@ -1509,7 +1349,7 @@ function showInvite() {
 window.__rc = {
   state,
   get engine() { return state.engine; },
-  setMuted, setDeafened, setSharing, toggleShare, screenErrorMessage,
+  setSharing, toggleShare, screenErrorMessage,
   buildDiagnostics, renderDiagnostics,
   joinVoice, leaveVoice, renderStage,
 };

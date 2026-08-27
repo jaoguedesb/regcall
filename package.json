@@ -1,7 +1,7 @@
 {
   "name": "regcall",
   "version": "1.0.0",
-  "description": "RegCall - plataforma de comunicacao por voz, texto e compartilhamento de tela",
+  "description": "RegCall - plataforma de transmissao de tela com audio da live e texto",
   "type": "module",
   "main": "server.js",
   "engines": {
@@ -9,7 +9,8 @@
   },
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js"
+    "dev": "node --watch server.js",
+    "test:persistence": "node test/persistence.mjs"
   },
   "dependencies": {
     "compression": "^1.7.4",
