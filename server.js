@@ -382,6 +382,7 @@ app.get('/api/config', (_req, res) => {
     supabaseUrl: SUPABASE_URL,
     supabasePublishableKey: SUPABASE_PUBLISHABLE_KEY,
     googleAuthEnabled,
+    websocketOnly: Boolean(process.env.VERCEL),
   });
 });
 

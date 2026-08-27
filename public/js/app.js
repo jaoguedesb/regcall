@@ -278,8 +278,10 @@ function connectSocket() {
   return new Promise((resolve, reject) => {
     if (state.socket && state.socket.connected) return resolve();
     const socket = window.io({
-      // Comeca com polling e sobe para WebSocket quando a rede/proxy permite.
-      // Forcar WebSocket primeiro causava quedas em redes moveis e corporativas.
+      // Na Vercel, polling pode trocar de Function entre o handshake e o POST
+      // seguinte. WebSocket direto mantem toda a sessao fixada na mesma Function.
+      transports: state.config?.websocketOnly ? ['websocket'] : ['polling', 'websocket'],
+      upgrade: !state.config?.websocketOnly,
       reconnection: true,
       reconnectionAttempts: Infinity,
       reconnectionDelay: 800,
