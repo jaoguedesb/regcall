@@ -21,9 +21,11 @@ const APP_NAME = process.env.APP_NAME || 'RegCall';
 const SERVER_PASSWORD = (process.env.SERVER_PASSWORD || '').trim();
 const SUPABASE_URL = (process.env.SUPABASE_URL || '').replace(/\/$/, '');
 const SUPABASE_KEY = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const SUPABASE_PUBLISHABLE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY || '';
 const SUPABASE_STATE_ID = process.env.SUPABASE_STATE_ID || 'regcall-main';
 const SUPABASE_TABLE = 'regcall_state';
 const supabaseEnabled = Boolean(SUPABASE_URL && SUPABASE_KEY);
+const googleAuthEnabled = Boolean(SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY);
 
 function supabaseHeaders(extra = {}) {
   const headers = { apikey: SUPABASE_KEY, 'User-Agent': 'RegCall-Backend/1.0', ...extra };
@@ -31,6 +33,19 @@ function supabaseHeaders(extra = {}) {
   // service_role continua precisando do JWT no Authorization.
   if (!SUPABASE_KEY.startsWith('sb_secret_')) headers.Authorization = `Bearer ${SUPABASE_KEY}`;
   return headers;
+}
+
+async function verifySupabaseUser(accessToken) {
+  if (!googleAuthEnabled || !accessToken) return null;
+  const response = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+    headers: {
+      apikey: SUPABASE_PUBLISHABLE_KEY,
+      Authorization: `Bearer ${accessToken}`,
+      'User-Agent': 'RegCall-Backend/1.0',
+    },
+  });
+  if (!response.ok) return null;
+  return response.json();
 }
 
 /* ------------------------------------------------------------------ */
@@ -243,6 +258,7 @@ function userPublic(u) {
     uid: u.uid,
     nick: u.nick,
     color: u.color,
+    avatar: u.avatar,
     roomId: u.roomId,
     voiceChannelId: u.voiceChannelId,
     muted: u.muted,
@@ -363,6 +379,9 @@ app.get('/api/config', (_req, res) => {
     appName: APP_NAME,
     iceServers: buildIceServers(),
     requiresPassword: Boolean(SERVER_PASSWORD),
+    supabaseUrl: SUPABASE_URL,
+    supabasePublishableKey: SUPABASE_PUBLISHABLE_KEY,
+    googleAuthEnabled,
   });
 });
 
@@ -419,13 +438,14 @@ io.on('connection', (socket) => {
     uid: null,
     nick: randomNick(),
     color: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)],
+    avatar: '',
     roomId: null,
     voiceChannelId: null,
     muted: false,
     deafened: false,
     sharing: false,
     camera: false,
-    authed: !SERVER_PASSWORD,
+    authed: false,
   };
   users.set(socket.id, user);
 
@@ -443,29 +463,27 @@ io.on('connection', (socket) => {
 
   /* ---------------- identidade ---------------- */
 
-  socket.on('auth', (payload = {}, cb) => {
+  socket.on('auth', async (payload = {}, cb) => {
     if (SERVER_PASSWORD) {
       if (sanitize(payload.password, 200) !== SERVER_PASSWORD) {
         return fail(cb, 'Senha do servidor incorreta.');
       }
     }
+    let googleUser;
+    try { googleUser = await verifySupabaseUser(payload.accessToken); }
+    catch (err) { console.error('[RegCall] falha ao validar login Google:', err); }
+    if (!googleUser?.id) return fail(cb, 'Faça login com sua conta Google.');
+    const metadata = googleUser.user_metadata || {};
     user.authed = true;
-    user.uid = sanitize(payload.uid, 64) || randomUUID();
-    const nick = sanitize(payload.nick, 24);
-    if (nick) user.nick = nick;
-    if (typeof payload.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(payload.color)) {
-      user.color = payload.color;
-    }
+    user.uid = sanitize(googleUser.id, 64);
+    user.nick = sanitize(metadata.full_name || metadata.name || googleUser.email?.split('@')[0], 24) || 'Usuário';
+    const avatar = metadata.avatar_url || metadata.picture || '';
+    user.avatar = typeof avatar === 'string' && /^https:\/\//i.test(avatar) ? avatar.slice(0, 1000) : '';
     ok(cb, { me: userPublic(user), rooms: roomsDirectory() });
   });
 
   socket.on('me:update', (payload = {}, cb) => {
     if (!requireAuth(cb)) return;
-    const nick = sanitize(payload.nick, 24);
-    if (nick) user.nick = nick;
-    if (typeof payload.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(payload.color)) {
-      user.color = payload.color;
-    }
     ok(cb, { me: userPublic(user) });
     if (user.roomId) broadcastRoom(user.roomId);
   });
@@ -619,6 +637,7 @@ io.on('connection', (socket) => {
       authorUid: user.uid,
       nick: user.nick,
       color: user.color,
+      avatar: user.avatar,
       text,
       ts: Date.now(),
     };

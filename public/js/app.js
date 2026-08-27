@@ -34,6 +34,26 @@ function initials(nick) {
   return String(nick || '?').slice(0, 2).toUpperCase();
 }
 
+function safeAvatarUrl(value) {
+  try { const url = new URL(value); return url.protocol === 'https:' ? url.href : ''; }
+  catch (e) { return ''; }
+}
+
+function avatarStyle(user) {
+  const color = /^#[0-9a-f]{6}$/i.test(user?.color || '') ? user.color : '#d77e49';
+  const avatar = safeAvatarUrl(user?.avatar);
+  return `background-color:${color}${avatar ? `;background-image:url(${JSON.stringify(avatar)})` : ''}`
+    .replaceAll('"', '&quot;');
+}
+
+function paintAvatar(element, user) {
+  const avatar = safeAvatarUrl(user?.avatar);
+  element.textContent = avatar ? '' : initials(user?.nick);
+  element.style.backgroundColor = user?.color || '#d77e49';
+  element.style.backgroundImage = avatar ? `url(${JSON.stringify(avatar)})` : '';
+  element.classList.toggle('has-photo', Boolean(avatar));
+}
+
 function timeLabel(ts) {
   const d = new Date(ts);
   const today = new Date();
@@ -96,6 +116,44 @@ const store = {
   },
 };
 
+function authSession() { return store.get('googleSession', null); }
+function saveAuthSession(session) { store.set('googleSession', session); }
+
+function consumeOAuthCallback() {
+  if (!location.hash.includes('access_token=')) return;
+  const hash = new URLSearchParams(location.hash.slice(1));
+  const accessToken = hash.get('access_token');
+  if (accessToken) {
+    saveAuthSession({
+      accessToken,
+      refreshToken: hash.get('refresh_token') || '',
+      expiresAt: Number(hash.get('expires_at')) || Math.floor(Date.now() / 1000) + Number(hash.get('expires_in') || 3600),
+    });
+  }
+  history.replaceState({}, '', location.pathname + location.search);
+}
+
+async function getAccessToken() {
+  const session = authSession();
+  if (!session?.accessToken) return '';
+  if (!session.expiresAt || session.expiresAt > Date.now() / 1000 + 60) return session.accessToken;
+  if (!session.refreshToken || !state.config?.supabasePublishableKey) return '';
+  const response = await fetch(`${state.config.supabaseUrl}/auth/v1/token?grant_type=refresh_token`, {
+    method: 'POST',
+    headers: { apikey: state.config.supabasePublishableKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refresh_token: session.refreshToken }),
+  });
+  if (!response.ok) { saveAuthSession(null); return ''; }
+  const data = await response.json();
+  const fresh = {
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token || session.refreshToken,
+    expiresAt: Math.floor(Date.now() / 1000) + Number(data.expires_in || 3600),
+  };
+  saveAuthSession(fresh);
+  return fresh.accessToken;
+}
+
 /* ============================ boot ============================ */
 
 $$('img[data-fallback]').forEach((img) => {
@@ -109,6 +167,7 @@ $$('img[data-fallback]').forEach((img) => {
 });
 
 async function boot() {
+  consumeOAuthCallback();
   try {
     const res = await fetch('/api/config');
     state.config = await res.json();
@@ -119,12 +178,6 @@ async function boot() {
 
   if (state.config.requiresPassword) $('#login-pass-field').classList.remove('hidden');
 
-  // preenche login
-  const savedNick = store.get('nick', '');
-  const savedColor = store.get('color', AVATAR_COLORS[0]);
-  $('#login-nick').value = savedNick;
-  buildColorPicker($('#color-picker'), savedColor);
-  buildColorPicker($('#profile-colors'), savedColor);
 
   const params = new URLSearchParams(location.search);
   const joinCode = params.get('join');
@@ -134,7 +187,7 @@ async function boot() {
   loadSettings();
   wireUI();
   warnInsecureContext();
-  $('#login-nick').focus();
+  if (authSession()?.accessToken) doLogin();
 }
 
 /**
@@ -172,29 +225,31 @@ function buildColorPicker(root, selected) {
   }
 }
 
-function pickedColor(root) {
-  return $('.color-dot.sel', root)?.dataset.color || AVATAR_COLORS[0];
-}
-
 /* ============================ login ============================ */
 
+function startGoogleLogin() {
+  if (!state.config?.googleAuthEnabled) {
+    $('#login-error').textContent = 'Login Google ainda não foi configurado no servidor.';
+    return;
+  }
+  const redirectTo = location.origin + location.pathname + location.search;
+  const url = new URL(`${state.config.supabaseUrl}/auth/v1/authorize`);
+  url.searchParams.set('provider', 'google');
+  url.searchParams.set('redirect_to', redirectTo);
+  location.assign(url.toString());
+}
+
 async function doLogin() {
-  const nick = $('#login-nick').value.trim();
-  if (!nick) { $('#login-error').textContent = 'Escolhe um nick aí.'; return; }
-  const color = pickedColor($('#color-picker'));
   const password = $('#login-pass').value;
+  const accessToken = await getAccessToken();
+  if (!accessToken) { startGoogleLogin(); return; }
 
   $('#login-btn').disabled = true;
   $('#login-error').textContent = '';
 
-  store.set('nick', nick);
-  store.set('color', color);
-  let uid = store.get('uid', null);
-  if (!uid) { uid = cryptoId(); store.set('uid', uid); }
-
   try {
     await connectSocket();
-    const resp = await emit('auth', { nick, color, uid, password });
+    const resp = await emit('auth', { accessToken, password });
     if (!resp.ok) throw new Error(resp.error);
 
     state.me = resp.me;
@@ -217,11 +272,6 @@ async function doLogin() {
   } finally {
     $('#login-btn').disabled = false;
   }
-}
-
-function cryptoId() {
-  if (crypto.randomUUID) return crypto.randomUUID();
-  return 'u-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
 
 function connectSocket() {
@@ -262,10 +312,8 @@ async function reAuthenticate() {
   if (state._reconnecting) return;
   state._reconnecting = true;
   try {
-    const resp = await emit('auth', {
-      nick: state.me.nick, color: state.me.color, uid: state.me.uid,
-      password: $('#login-pass').value,
-    });
+    const accessToken = await getAccessToken();
+    const resp = await emit('auth', { accessToken, password: $('#login-pass').value });
     if (!resp.ok) { toast(resp.error, 'error'); return; }
     state.me = { ...state.me, ...resp.me };
     state.directory = resp.rooms || [];
@@ -377,12 +425,11 @@ function setupEngine() {
 function renderMe() {
   if (!state.me) return;
   const av = $('#me-avatar');
-  av.textContent = initials(state.me.nick);
-  av.style.background = state.me.color;
+  paintAvatar(av, state.me);
   $('#me-nick').textContent = state.me.nick;
   $('#me-sub').textContent = state.room ? state.room.name : 'online';
-  $('#profile-nick').value = state.me.nick;
-  buildColorPicker($('#profile-colors'), state.me.color);
+  paintAvatar($('#profile-avatar'), state.me);
+  $('#profile-name').textContent = state.me.nick;
 }
 
 /* ============================ render: home ============================ */
@@ -569,7 +616,7 @@ function voiceMemberEl(m) {
   const badges = [];
   if (m.sharing) badges.push(`<span class="live">${ICONS.screen}</span>`);
   row.innerHTML = `
-    <span class="avatar" style="background:${m.color}">${escapeHtml(initials(m.nick))}</span>
+    <span class="avatar${m.avatar ? ' has-photo' : ''}" style="${avatarStyle(m)}">${m.avatar ? '' : escapeHtml(initials(m.nick))}</span>
     <span class="nm">${escapeHtml(m.nick)}</span>
     <span class="badges">${badges.join('')}</span>`;
   return row;
@@ -592,7 +639,7 @@ function renderMembers() {
     if (m.sharing) badges.push(`<span class="live">${ICONS.screen}</span>`);
     row.innerHTML = `
       <span class="avatar-wrap">
-        <span class="avatar" style="background:${m.color}">${escapeHtml(initials(m.nick))}</span>
+        <span class="avatar${m.avatar ? ' has-photo' : ''}" style="${avatarStyle(m)}">${m.avatar ? '' : escapeHtml(initials(m.nick))}</span>
         <span class="presence"></span>
       </span>
       <span class="nm">${escapeHtml(m.nick)}</span>
@@ -688,7 +735,7 @@ function appendMessage(msg, bulk = false) {
         <div class="msg-body"><div class="msg-text">${linkify(msg.text)}</div></div>`;
     } else {
       el.innerHTML = `
-        <span class="avatar" style="background:${msg.color || '#5865f2'}">${escapeHtml(initials(msg.nick))}</span>
+        <span class="avatar${msg.avatar ? ' has-photo' : ''}" style="${avatarStyle(msg)}">${msg.avatar ? '' : escapeHtml(initials(msg.nick))}</span>
         <div class="msg-body">
           <div class="msg-head"><b style="color:${msg.color || '#fff'}">${escapeHtml(msg.nick)}</b><time>${timeLabel(msg.ts)}</time></div>
           <div class="msg-text">${linkify(msg.text)}</div>
@@ -895,8 +942,7 @@ function updateTile(tile, p) {
     tile.avatar.classList.remove('hidden');
     tile.badge.classList.add('hidden');
     tile.actions.classList.add('hidden');
-    tile.avatar.textContent = initials(p.nick);
-    tile.avatar.style.background = p.color;
+    paintAvatar(tile.avatar, p);
     if (state.focused === p.id) state.focused = null;
   }
 
@@ -1131,8 +1177,7 @@ function closeNav() { $('#app').classList.remove('nav-open'); }
 /* ============================ wiring ============================ */
 
 function wireUI() {
-  $('#login-btn').addEventListener('click', doLogin);
-  $('#login-nick').addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
+  $('#login-btn').addEventListener('click', startGoogleLogin);
   $('#login-pass').addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
 
   $('#btn-home').addEventListener('click', showHome);
@@ -1189,23 +1234,22 @@ function wireUI() {
   // perfil / nick
   $('#btn-profile').addEventListener('click', () => {
     if (!state.me) return;
-    $('#profile-nick').value = state.me.nick;
-    buildColorPicker($('#profile-colors'), state.me.color);
+    paintAvatar($('#profile-avatar'), state.me);
+    $('#profile-name').textContent = state.me.nick;
     openModal('#modal-profile');
   });
-  $('#profile-save').addEventListener('click', async () => {
-    const nick = $('#profile-nick').value.trim();
-    if (!nick) return toast('O nick não pode ficar vazio.', 'error');
-    const color = pickedColor($('#profile-colors'));
-    const resp = await emit('me:update', { nick, color });
-    if (!resp.ok) return toast(resp.error, 'error');
-    state.me = { ...state.me, ...resp.me };
-    store.set('nick', nick); store.set('color', color);
-    renderMe();
-    closeModal();
-    toast('Perfil atualizado.', 'success');
+  $('#profile-logout').addEventListener('click', async () => {
+    const session = authSession();
+    if (session?.accessToken && state.config?.supabasePublishableKey) {
+      fetch(`${state.config.supabaseUrl}/auth/v1/logout`, {
+        method: 'POST',
+        headers: { apikey: state.config.supabasePublishableKey, Authorization: `Bearer ${session.accessToken}` },
+      }).catch(() => {});
+    }
+    saveAuthSession(null);
+    state.socket?.close();
+    location.reload();
   });
-  $('#profile-nick').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#profile-save').click(); });
 
   // configurações
   $('#btn-settings').addEventListener('click', async () => {

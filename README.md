@@ -102,6 +102,7 @@ Prefere hospedar o seu? [coturn](https://github.com/coturn/coturn) faz o trabalh
 | `SERVER_PASSWORD` | — | Se preenchida, exige senha para entrar na plataforma |
 | `SUPABASE_URL` | — | URL do projeto Supabase |
 | `SUPABASE_SECRET_KEY` | — | Chave `sb_secret_...` usada somente pelo backend |
+| `SUPABASE_PUBLISHABLE_KEY` | — | Chave pública `sb_publishable_...` usada pelo login |
 | `SUPABASE_STATE_ID` | `regcall-main` | Identificador desta instalação no banco |
 | `ROOM_TTL_HOURS` | `0` | Horas para remover salas vazias; `0` mantém indefinidamente |
 
@@ -111,6 +112,15 @@ O servidor salva automaticamente salas, canais e até 300 mensagens por canal no
 Execute primeiro [`supabase/schema.sql`](supabase/schema.sql) no SQL Editor e configure
 `SUPABASE_URL` e `SUPABASE_SECRET_KEY` no ambiente do backend. A chave secreta nunca deve
 ser enviada ao navegador. Presença e transmissões continuam efêmeras, pois só existem durante a conexão.
+
+### Login com Google
+
+1. No Google Auth Platform, crie um cliente OAuth do tipo **Web application**.
+2. Em **Authorized JavaScript origins**, adicione a URL pública do RegCall e `http://localhost:3000`.
+3. Em **Authorized redirect URIs**, adicione `https://fahuftnwbhzpxdsvcqnw.supabase.co/auth/v1/callback`.
+4. No Supabase, abra **Authentication → Providers → Google**, habilite o provedor e informe o Client ID e Client Secret do Google.
+5. Em **Authentication → URL Configuration**, configure a URL do site e permita `http://localhost:3000/**` durante o desenvolvimento.
+6. Configure `SUPABASE_PUBLISHABLE_KEY` no backend. A chave secreta nunca é enviada ao navegador.
 
 ---
 

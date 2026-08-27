@@ -9,6 +9,13 @@ const cwd = fileURLToPath(new URL('..', import.meta.url));
 let savedPayload = null;
 
 const supabase = createServer(async (req, res) => {
+  if (req.url === '/auth/v1/user' && req.method === 'GET') {
+    res.setHeader('content-type', 'application/json');
+    return res.end(JSON.stringify({
+      id: 'google-persist-test', email: 'teste@example.com',
+      user_metadata: { full_name: 'Teste Google', avatar_url: 'https://example.com/avatar.png' },
+    }));
+  }
   if (!req.url?.startsWith('/rest/v1/regcall_state')) return res.writeHead(404).end();
   if (req.method === 'GET') {
     res.setHeader('content-type', 'application/json');
@@ -32,6 +39,7 @@ function start() {
       PORT: String(PORT),
       SUPABASE_URL: `http://localhost:${SUPABASE_PORT}`,
       SUPABASE_SERVICE_ROLE_KEY: 'test-service-role-key',
+      SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_test-key',
       SUPABASE_STATE_ID: 'persistence-test',
     },
     stdio: ['ignore', 'ignore', 'inherit'],
@@ -53,7 +61,7 @@ async function createRoom() {
     const timer = setTimeout(() => reject(new Error('timeout no Socket.IO')), 5000);
     ws.onmessage = ({ data }) => {
       if (data.startsWith('0')) ws.send('40');
-      else if (data.startsWith('40')) ws.send('421["auth",{"uid":"persist-test","nick":"Teste"}]');
+      else if (data.startsWith('40')) ws.send('421["auth",{"accessToken":"test-google-token"}]');
       else if (data.startsWith('431')) ws.send('422["room:create",{"name":"Sala Persistida"}]');
       else if (data.startsWith('432')) {
         clearTimeout(timer);

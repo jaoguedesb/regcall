@@ -740,6 +740,28 @@ body {
 .btn-primary:hover { background: linear-gradient(135deg, #ffc092, #dd7945); transform: translateY(-1px); }
 .btn-ghost { background: rgba(255,255,255,.035); border: 1px solid var(--border); }
 .btn-ghost:hover { background: rgba(215,126,73,.1); text-decoration: none; }
+.btn-google {
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  color: #211710; background: #fff; border: 1px solid #ddd2c9;
+  box-shadow: 0 8px 28px rgba(0,0,0,.24);
+}
+.btn-google:hover { background: #fff8f2; transform: translateY(-1px); }
+.btn-google svg { width: 22px; height: 22px; }
+.avatar.has-photo, .tile-avatar.has-photo, .google-profile-avatar.has-photo {
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+.google-profile {
+  display: flex; align-items: center; gap: 14px;
+  padding: 16px; margin: 18px 0 22px;
+  border: 1px solid var(--border); border-radius: 16px;
+  background: rgba(215,126,73,.07);
+}
+.google-profile-avatar { width: 58px; height: 58px; border-radius: 16px; }
+.google-profile strong, .google-profile small { display: block; }
+.google-profile strong { font-size: 16px; }
+.google-profile small { margin-top: 4px; color: var(--muted); font-size: 12px; }
 
 @media (min-width: 781px) {
   .app {
